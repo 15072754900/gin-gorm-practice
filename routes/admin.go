@@ -5,8 +5,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"hufeng-code/db"
 	"hufeng-code/models"
+	"log"
 	"net/http"
-	"time"
 )
 
 // 之后再拆分
@@ -16,7 +16,9 @@ func BindEmployeeSetting(router *gin.Engine) {
 	emp.POST("/add", EmployeeEntry)
 	emp.DELETE("/dimission", EmployeeDiMission)
 	emp.PUT("/change", EmployeeUpdate)
+	emp.PATCH("/change/:name", EmployeeUpdateByEmail)
 	emp.GET("/list", EmployeeList)
+	emp.GET("/:name", EmployeeMsgByName)
 }
 
 func BindEmployeeJob(router *gin.Engine) {
@@ -43,6 +45,32 @@ func EmployeeDiMission(c *gin.Context) {
 }
 
 func EmployeeUpdate(c *gin.Context) {
+	emp := models.Employee{}
+	if err := c.Bind(&emp); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		log.Printf("输入有误：与原始结构体不符，%v", err)
+	}
+	if rows := db.DB.Preload("Department").Save(&emp); rows.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "数据修改失败"})
+		log.Printf("数据修改错误：%v", rows.Error)
+	}
+	c.JSON(http.StatusOK, gin.H{"修改字段成功": emp})
+}
+
+func EmployeeUpdateByEmail(c *gin.Context) {
+	emp := models.Employee{}
+	name := c.Param("name")
+	db.DB.Where("name=?", name).Find(&emp)
+	data := struct {
+		Email string
+	}{}
+	_ = c.Bind(&data)
+	if rows := db.DB.Model(&emp).Where("name=?", name).Update("email", data.Email); rows.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "数据修改失败"})
+		log.Printf("数据修改错误：%v", rows.Error)
+	}
+	db.DB.Preload("Department").Where("name=?", name).First(&emp)
+	c.JSON(http.StatusOK, gin.H{"修改字段后": emp})
 }
 
 func EmployeeEntry(c *gin.Context) {
@@ -52,36 +80,36 @@ func EmployeeEntry(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
 	if err := db.DB.Create(&employee).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create employee"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "职员插入失败"})
 		return
 	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Employee created successfully", "employee": employee})
+	c.JSON(http.StatusOK, gin.H{"message": "职员导入成功", "employee": employee})
 }
 func EmployeeList(c *gin.Context) {
+	var empList []models.Employee
+	rows := db.DB.Preload("Department").Find(&empList)
+	if rows.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "数据查看失败"})
+		log.Printf("查询数据错误：%v", rows.Error)
+	}
+	c.JSON(http.StatusOK, gin.H{"用户数据：": empList})
+}
 
+func EmployeeMsgByName(c *gin.Context) {
+	empName := c.Param("name")
+	emp := models.Employee{}
+	rows := db.DB.Where("name=?", empName).Find(&emp)
+	if rows.Error != nil {
+		log.Printf("查询数据错误：%v", rows.Error)
+	}
+	db.DB.Preload("Department").Find(&emp, emp.ID)
+	c.JSON(http.StatusOK, gin.H{"用户数据：": emp})
 }
 
 // JobRecord 添加工作记录
 func JobRecord(c *gin.Context) {
-	var record models.Records
 
-	if err := c.ShouldBindJSON(&record); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// 设置打卡时间
-	record.ClickOn = time.Now()
-
-	if err := db.DB.Create(&record).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create job record"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Job record created successfully", "record": record})
 }
 
 func DepartmentCreate(c *gin.Context) {
@@ -93,9 +121,9 @@ func DepartmentCreate(c *gin.Context) {
 	}
 
 	if err := db.DB.Create(&department).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create department"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建部门失败"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Department created successfully", "department": department})
+	c.JSON(http.StatusOK, gin.H{"message": "公司部门创建成功", "department": department})
 }
