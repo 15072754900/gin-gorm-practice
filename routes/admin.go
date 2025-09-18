@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"fmt"
 	"github.com/gin-gonic/gin"
 	"hufeng-code/db"
 	"hufeng-code/models"
@@ -34,6 +35,11 @@ func BindEmployeeCompany(router *gin.Engine) {
 }
 
 func EmployeeDiMission(c *gin.Context) {
+	employeeId := c.Request.URL.Query()["employee_id"]
+	emp := models.Employee{}
+	_ = db.DB.Where("id = ?", employeeId).First(&emp)
+	_ = db.DB.Delete(emp)
+	c.JSON(http.StatusOK, fmt.Sprintf("删除成功：%s", emp.Name))
 }
 
 func EmployeeUpdate(c *gin.Context) {
@@ -55,7 +61,7 @@ func EmployeeEntry(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Employee created successfully", "employee": employee})
 }
 func EmployeeList(c *gin.Context) {
-	
+
 }
 
 // JobRecord 添加工作记录
